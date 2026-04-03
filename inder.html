@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mysterietävlingen - Pro Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Special+Elite&display=swap');
+        
+        body {
+            font-family: 'Special Elite', cursive;
+            background-color: #0f172a;
+            color: #f1f5f9;
+        }
+
+        .code-font { font-family: 'Fira Code', monospace; }
+
+        .mystery-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+
+        .hidden { display: none; }
+
+        .btn-action {
+            transition: all 0.2s ease;
+        }
+
+        .btn-action:hover:not(:disabled) {
+            transform: translateY(-1px);
+            background-color: #4f46e5;
+        }
+
+        .terminal {
+            background: #020617;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .success-msg { color: #4ade80; }
+        .fail-msg { color: #f87171; }
+
+        #pixel-matrix {
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            gap: 2px;
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+        }
+
+        .pixel-cell {
+            transition: all 0.15s ease;
+            aspect-ratio: 1 / 1;
+            background-color: #1e293b;
+            border-radius: 1px;
+        }
+        
+        .pixel-cell:hover {
+            transform: scale(1.3);
+            z-index: 20;
+            outline: 1px solid rgba(255,255,255,0.5);
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .scanline-container {
+            position: relative;
+            overflow: hidden;
+        }
+        .scanline-container::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to bottom, transparent, rgba(79, 70, 229, 0.05), transparent);
+            height: 20px;
+            animation: scan 3s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes scan {
+            from { transform: translateY(-100%); }
+            to { transform: translateY(400px); }
+        }
+        
+        .no-select { user-select: none; }
+
+        .terminal::-webkit-scrollbar { width: 4px; }
+        .terminal::-webkit-scrollbar-track { background: #020617; }
+        .terminal::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        
+        #terminal-mining span {
+            display: inline-block;
+        }
+
+        /* Subtil ledtråd för koden på nivå 5: lite extra avstånd mellan tecknen */
+        .code-hint {
+            letter-spacing: 0.15em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div id="stats-bar" class="hidden mb-4 w-full max-w-2xl flex justify-between items-center px-4">
+        <div class="text-sm uppercase tracking-widest text-slate-400">
+            Nivå <span id="level-counter">0</span>: <span id="current-task-name" class="text-indigo-400">-</span>
+        </div>
+        <div id="game-timer" class="bg-slate-800 px-4 py-1 rounded border border-slate-700 font-bold code-font text-indigo-400">00:00</div>
+    </div>
+
+    <div id="game-container" class="w-full max-w-2xl mystery-card rounded-xl p-8 relative">
+        
+        <!-- START-SKÄRM -->
+        <div id="screen-start" class="text-center">
+            <h1 class="text-4xl mb-4 font-bold text-white uppercase tracking-tighter">Mysterietävlingen</h1>
+            <p class="mb-8 text-slate-400">
+                Sju tekniska säkerhetslager har aktiverats. Ditt namn och din tid loggas vid slutfört uppdrag.
+            </p>
+            <button onclick="startGame()" class="bg-indigo-600 text-white px-10 py-4 rounded-lg btn-action font-bold uppercase tracking-wider">Initiera Protokoll</button>
+        </div>
+
+        <!-- NIVÅ 1 -->
+        <div id="screen-level-1" class="hidden">
+            <h2 class="text-xl mb-4 text-indigo-400 font-bold uppercase">01. Talföljd</h2>
+            <p class="mb-6 text-slate-300">Identifiera mönstret och fyll i nästa tal:</p>
+            <div class="terminal mb-6">
+                <p class="text-3xl text-center code-font text-white">2, 4, 8, 14, 22, ?</p>
+            </div>
+            <input type="number" id="input-l1" class="w-full p-4 bg-slate-900 border border-slate-700 rounded mb-4 text-center text-2xl code-font outline-none focus:border-indigo-500">
+            <div id="feedback-l1" class="mb-4 text-center h-6 text-sm"></div>
+            <button onclick="checkLevel1()" class="w-full bg-indigo-600 py-3 rounded btn-action font-bold uppercase">Verifiera</button>
+        </div>
+
+        <!-- NIVÅ 2 -->
+        <div id="screen-level-2" class="hidden">
+            <h2 class="text-xl mb-4 text-emerald-400 font-bold uppercase">02. Cipher Shift</h2>
+            <p class="mb-6 text-slate-300">Skifta varje bokstav <span class="text-white font-bold">1 steg bakåt</span> i alfabetet:</p>
+            <div class="terminal mb-6 text-center">
+                <p class="text-3xl code-font text-emerald-400 tracking-widest uppercase">EBUB</p>
+            </div>
+            <input type="text" id="input-l2" placeholder="..." class="w-full p-4 bg-slate-900 border border-slate-700 rounded mb-4 text-center text-2xl code-font outline-none focus:border-emerald-500 uppercase">
+            <div id="feedback-l2" class="mb-4 text-center h-6 text-sm"></div>
+            <button onclick="checkLevel2()" class="w-full bg-emerald-600 py-3 rounded btn-action font-bold uppercase">Dekryptera</button>
+        </div>
+
+        <!-- NIVÅ 3 (ENKLARE) -->
+        <div id="screen-level-3" class="hidden">
+            <h2 class="text-xl mb-4 text-orange-400 font-bold uppercase">03. Stack Trace</h2>
+            <p class="mb-6 text-slate-300">Vad blir slutresultatet?</p>
+            <div class="terminal mb-6">
+                <pre class="text-lg text-center code-font text-orange-200">
+let a = 5;
+let b = 10;
+let result = (a * 3) + b;
+                </pre>
+            </div>
+            <input type="number" id="input-l3" class="w-full p-4 bg-slate-900 border border-slate-700 rounded mb-4 text-center text-2xl code-font outline-none focus:border-orange-500">
+            <div id="feedback-l3" class="mb-4 text-center h-6 text-sm"></div>
+            <button onclick="checkLevel3()" class="w-full bg-orange-600 py-3 rounded btn-action font-bold uppercase">Exekvera</button>
+        </div>
+
+        <!-- NIVÅ 4 -->
+        <div id="screen-level-4" class="hidden">
+            <h2 class="text-xl mb-2 text-pink-400 font-bold uppercase">04. Neural Matrix</h2>
+            <p class="mb-4 text-slate-300 text-sm">Hitta <span class="text-white font-bold">5</span> korrupta punkter. De är något mörkare.</p>
+            <div class="scanline-container p-2 bg-slate-900 rounded-lg border border-slate-800 mb-4">
+                <div id="pixel-matrix" class="no-select">
+                    <!-- Genereras via JS -->
+                </div>
+            </div>
+            <p id="errors-found-text" class="text-pink-400 text-center font-bold text-sm tracking-widest uppercase">Återställt: 0/5</p>
+            <div id="feedback-l4" class="mt-2 text-center h-4 text-[10px]"></div>
+        </div>
+
+        <!-- NIVÅ 5 (LIKA FÄRGER) -->
+        <div id="screen-level-5" class="hidden">
+            <h2 class="text-xl mb-4 text-amber-400 font-bold uppercase">05. Data Stream Analysis</h2>
+            <p class="mb-6 text-slate-300 text-sm">Lokalisera den <span class="text-white">4-siffriga koden</span> i loggen:</p>
+            <div id="terminal-mining" class="terminal mb-6 code-font text-[9px] leading-[0.8rem] tracking-tighter break-all select-none">
+                <!-- Genereras via JS -->
+            </div>
+            <input type="text" id="input-l5" maxlength="4" placeholder="KOD" class="w-full p-4 bg-slate-900 border border-slate-700 rounded mb-4 text-center text-2xl code-font outline-none focus:border-amber-500 uppercase">
+            <div id="feedback-l5" class="mb-4 text-center h-6 text-sm"></div>
+            <button onclick="checkLevel5()" class="w-full bg-amber-600 py-3 rounded btn-action font-bold uppercase">Verifiera Sekvens</button>
+        </div>
+
+        <!-- NIVÅ 6 -->
+        <div id="screen-level-6" class="hidden">
+            <h2 class="text-xl mb-4 text-violet-400 font-bold uppercase">06. Logic Sequence</h2>
+            <p class="mb-6 text-slate-300">Vilken symbol fullbordar sekvensen?</p>
+            <div class="terminal mb-6 flex flex-col items-center justify-center space-y-4">
+                <div class="text-4xl tracking-[1rem] text-white code-font">
+                    ▲ ■ ● ▲ ■ ?
+                </div>
+                <div class="flex space-x-4">
+                    <button onclick="checkLevel6('▲')" class="w-16 h-16 bg-slate-800 rounded hover:bg-slate-700 text-2xl flex items-center justify-center">▲</button>
+                    <button onclick="checkLevel6('■')" class="w-16 h-16 bg-slate-800 rounded hover:bg-slate-700 text-2xl flex items-center justify-center">■</button>
+                    <button onclick="checkLevel6('●')" class="w-16 h-16 bg-slate-800 rounded hover:bg-slate-700 text-2xl flex items-center justify-center">●</button>
+                </div>
+            </div>
+            <div id="feedback-l6" class="mb-4 text-center h-6 text-sm"></div>
+        </div>
+
+        <!-- NIVÅ 7 -->
+        <div id="screen-level-7" class="hidden">
+            <h2 class="text-xl mb-4 text-cyan-400 font-bold uppercase">07. Final Override</h2>
+            <div class="terminal mb-8 italic text-center text-lg text-cyan-300 leading-relaxed">
+                "Jag har städer, men inga hus. Jag har berg, men inga träd. Jag har vatten, men ingen fisk. Vad är jag?"
+            </div>
+            <input type="text" id="input-l7" placeholder="Ditt svar..." class="w-full p-4 bg-slate-900 border border-slate-700 rounded mb-4 text-center text-2xl code-font outline-none focus:border-cyan-500 uppercase">
+            <div id="feedback-l7" class="mb-4 text-center h-6 text-sm"></div>
+            <button onclick="checkLevel7()" class="w-full bg-cyan-600 py-3 rounded btn-action font-bold uppercase">Slutför Uppdraget</button>
+        </div>
+
+        <!-- SLUTSKÄRM -->
+        <div id="screen-end" class="hidden text-center">
+            <div class="mb-4 text-6xl animate-bounce">🏆</div>
+            <h2 class="text-3xl mb-2 text-emerald-400 font-bold">SYSTEMET ÅTERSTÄLLT</h2>
+            <p class="text-slate-400 mb-6">Alla säkerhetslager har penetrerats.</p>
+            
+            <div class="bg-slate-800 p-6 rounded-lg mb-6 flex flex-col items-center">
+                <p class="text-xs text-slate-500 uppercase mb-1">Slutgiltig Tid</p>
+                <p id="final-time" class="text-3xl text-white font-bold code-font mb-4">00:00</p>
+                
+                <input type="text" id="gamertag" placeholder="Ange Gamertag..." class="w-full p-3 bg-slate-900 border border-slate-700 rounded text-center text-lg uppercase outline-none focus:border-emerald-500 mb-4">
+                
+                <button id="submit-discord" onclick="sendToDiscord()" class="w-full bg-emerald-600 py-3 rounded btn-action font-bold uppercase">Publicera på Topplistan</button>
+                <p id="discord-status" class="mt-2 text-xs text-slate-500"></p>
+            </div>
+            
+            <button onclick="location.reload()" class="text-slate-500 hover:text-white text-sm uppercase underline">Spela igen</button>
+        </div>
+
+    </div>
+
+    <script>
+        const DISCORD_WEBHOOK_URL = "https://discordapp.com/api/webhooks/1489554981324324894/Nr2LuaDGJSLAu6YaQJ81AzR_pdqzxHa6PgnmSDQtKFqXGyk3c00YDX6fAn2klgyBiNtk";
+
+        let startTime;
+        let timerInterval;
+        let errorsFoundCount = 0;
+        let totalErrorsToFind = 5;
+        let hiddenCode = "";
+        const taskNames = ["Logik", "Cipher", "Stack", "Neural", "Mining", "Pattern", "Final"];
+
+        function updateTimer() {
+            const now = Date.now();
+            const diff = Math.floor((now - startTime) / 1000);
+            const m = Math.floor(diff / 60).toString().padStart(2, '0');
+            const s = (diff % 60).toString().padStart(2, '0');
+            document.getElementById('game-timer').innerText = `${m}:${s}`;
+        }
+
+        function showScreen(levelIndex) {
+            const screens = ['screen-start', 'screen-level-1', 'screen-level-2', 'screen-level-3', 'screen-level-4', 'screen-level-5', 'screen-level-6', 'screen-level-7', 'screen-end'];
+            screens.forEach(s => document.getElementById(s).classList.add('hidden'));
+            document.getElementById(screens[levelIndex]).classList.remove('hidden');
+            
+            if (levelIndex > 0 && levelIndex < 8) {
+                document.getElementById('stats-bar').classList.remove('hidden');
+                document.getElementById('current-task-name').innerText = taskNames[levelIndex-1];
+                document.getElementById('level-counter').innerText = levelIndex;
+            } else {
+                document.getElementById('stats-bar').classList.add('hidden');
+            }
+        }
+
+        function startGame() {
+            startTime = Date.now();
+            timerInterval = setInterval(updateTimer, 1000);
+            showScreen(1);
+        }
+
+        function checkLevel1() {
+            if (document.getElementById('input-l1').value == '32') showScreen(2);
+            else document.getElementById('feedback-l1').innerHTML = '<span class="fail-msg">FEL SVAR. FÖRSÖK IGEN.</span>';
+        }
+
+        function checkLevel2() {
+            if (document.getElementById('input-l2').value.trim().toUpperCase() === 'DATA') showScreen(3);
+            else document.getElementById('feedback-l2').innerHTML = '<span class="fail-msg">DEKRYPTERING MISSLYCKADES.</span>';
+        }
+
+        function checkLevel3() {
+            if (document.getElementById('input-l3').value == '25') {
+                showScreen(4);
+                initMatrix();
+            } else {
+                document.getElementById('feedback-l3').innerHTML = '<span class="fail-msg">FELAKTIGT RESULTAT.</span>';
+            }
+        }
+
+        function initMatrix() {
+            const matrix = document.getElementById('pixel-matrix');
+            matrix.innerHTML = '';
+            errorsFoundCount = 0;
+            document.getElementById('errors-found-text').innerText = `Återställt: 0/${totalErrorsToFind}`;
+            
+            const size = 15 * 15;
+            const baseColor = "#1e293b"; 
+            const errorColor = "#1a2435";
+            
+            const errorIndices = [];
+            while(errorIndices.length < totalErrorsToFind) {
+                let r = Math.floor(Math.random() * size);
+                if(!errorIndices.includes(r)) errorIndices.push(r);
+            }
+            
+            for(let i=0; i<size; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'pixel-cell cursor-pointer';
+                cell.style.backgroundColor = errorIndices.includes(i) ? errorColor : baseColor;
+                
+                cell.onclick = () => {
+                    if (errorIndices.includes(i)) {
+                        if (cell.style.backgroundColor !== "rgb(74, 222, 128)") {
+                            cell.style.backgroundColor = "#4ade80";
+                            cell.style.boxShadow = "0 0 8px #4ade80";
+                            errorsFoundCount++;
+                            document.getElementById('errors-found-text').innerText = `Återställt: ${errorsFoundCount}/${totalErrorsToFind}`;
+                            if(errorsFoundCount === totalErrorsToFind) {
+                                setTimeout(() => { showScreen(5); initMining(); }, 600);
+                            }
+                        }
+                    } else {
+                        document.getElementById('feedback-l4').innerHTML = '<span class="fail-msg uppercase">Kritisk störning - Kalibrerar om...</span>';
+                        setTimeout(() => {
+                            document.getElementById('feedback-l4').innerHTML = '';
+                            initMatrix();
+                        }, 500);
+                    }
+                };
+                matrix.appendChild(cell);
+            }
+        }
+
+        function initMining() {
+            const container = document.getElementById('terminal-mining');
+            const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+{}[]|;:,.<>?";
+            hiddenCode = Math.floor(1000 + Math.random() * 9000).toString();
+            
+            const totalChars = 2800; 
+            const insertPos = Math.floor(Math.random() * (totalChars - 200)) + 100;
+            
+            // Brusfärger och glitch-toner
+            const colors = ['#334155', '#1e293b', '#475569', '#374151', '#4b5563', '#64748b'];
+            
+            let htmlContent = "";
+            for (let i = 0; i < totalChars; i++) {
+                const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                
+                if (i === insertPos) {
+                    // Koden får nu samma slumpmässiga färger som bruset för att smälta in
+                    htmlContent += `<span class="code-hint">`;
+                    for(let char of hiddenCode) {
+                        const codeColor = colors[Math.floor(Math.random() * colors.length)];
+                        htmlContent += `<span style="color: ${codeColor}">${char}</span>`;
+                    }
+                    htmlContent += `</span>`;
+                    i += 3;
+                } else {
+                    const char = chars.charAt(Math.floor(Math.random() * chars.length));
+                    htmlContent += `<span style="color: ${randomColor}">${char}</span>`;
+                }
+            }
+            container.innerHTML = htmlContent;
+        }
+
+        function checkLevel5() {
+            if (document.getElementById('input-l5').value === hiddenCode) showScreen(6);
+            else document.getElementById('feedback-l5').innerHTML = '<span class="fail-msg">FELAKTIG NYCKEL.</span>';
+        }
+
+        function checkLevel6(symbol) {
+            if (symbol === '●') showScreen(7);
+            else document.getElementById('feedback-l6').innerHTML = '<span class="fail-msg">FEL MÖNSTERVAL.</span>';
+        }
+
+        function checkLevel7() {
+            const val = document.getElementById('input-l7').value.trim().toLowerCase();
+            if (val === 'karta' || val === 'en karta') finishGame();
+            else document.getElementById('feedback-l7').innerHTML = '<span class="fail-msg">FELAKTIGT SVAR.</span>';
+        }
+
+        function finishGame() {
+            clearInterval(timerInterval);
+            document.getElementById('final-time').innerText = document.getElementById('game-timer').innerText;
+            showScreen(8);
+        }
+
+        async function sendToDiscord() {
+            const tag = document.getElementById('gamertag').value.trim();
+            const time = document.getElementById('final-time').innerText;
+            const status = document.getElementById('discord-status');
+            const btn = document.getElementById('submit-discord');
+            if (!tag) { status.innerText = "Ange ett namn."; return; }
+            btn.disabled = true;
+            status.innerText = "Skickar...";
+            const payload = {
+                username: "Mystery Bot",
+                embeds: [{
+                    title: "🏆 Nytt Slutfört Uppdrag",
+                    color: 3447003,
+                    fields: [ { name: "Agent", value: tag, inline: true }, { name: "Tid", value: time, inline: true } ],
+                    timestamp: new Date().toISOString()
+                }]
+            };
+            try {
+                const response = await fetch(DISCORD_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    status.innerText = "Loggat på topplistan!";
+                    status.className = "mt-2 text-xs text-emerald-400";
+                } else throw new Error();
+            } catch (err) {
+                status.innerText = "Fel vid sändning.";
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
